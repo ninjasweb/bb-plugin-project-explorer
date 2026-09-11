@@ -33,12 +33,58 @@ interface Root {
   branch: string | null;
 }
 
-interface OpenFile {
+interface OpenTextFile {
+  kind: "text";
   path: string;
   relativePath: string;
   name: string;
   content: string;
   sha256: string;
+}
+
+interface OpenImageFile {
+  kind: "image";
+  path: string;
+  relativePath: string;
+  name: string;
+  url: string;
+}
+
+type OpenFile = OpenTextFile | OpenImageFile;
+
+const IMAGE_EXTENSIONS = new Set([
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "png",
+  "svg",
+  "svgz",
+  "webp",
+]);
+
+const DEFAULT_SIDEBAR_WIDTH = 260;
+const MIN_SIDEBAR_WIDTH = 160;
+const MIN_CONTENT_WIDTH = 220;
+const RESIZER_WIDTH = 5;
+const SIDEBAR_STORAGE_KEY = "project-explorer.sidebar-width";
+
+function isImagePath(path: string): boolean {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return extension !== undefined && IMAGE_EXTENSIONS.has(extension);
+}
+
+function readStoredSidebarWidth(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(SIDEBAR_STORAGE_KEY));
+    return Number.isFinite(stored)
+      ? Math.max(stored, MIN_SIDEBAR_WIDTH)
+      : DEFAULT_SIDEBAR_WIDTH;
+  } catch {
+    return DEFAULT_SIDEBAR_WIDTH;
+  }
 }
 
 /**
@@ -266,7 +312,7 @@ function Editor({
 }: {
   rpc: Rpc;
   root: Root;
-  file: OpenFile;
+  file: OpenTextFile;
   onSaved: (sha256: string, content: string) => void;
   onClose: () => void;
 }) {
@@ -421,6 +467,63 @@ function Editor({
   );
 }
 
+/** Lightweight browser-native preview for raster images and SVG files. */
+function ImagePreview({
+  file,
+  onClose,
+}: {
+  file: OpenImageFile;
+  onClose: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [file.path]);
+
+  return (
+    <div className="pe-editor">
+      <div className="pe-editor-header">
+        <span className="pe-editor-path" title={file.relativePath}>
+          {file.relativePath}
+        </span>
+        <span className="pe-editor-spacer" />
+        <button
+          type="button"
+          className="pe-icon-button pe-close"
+          onClick={onClose}
+          title="Close file"
+          aria-label="Close file"
+        >
+          <svg viewBox="0 0 16 16" width="11" height="11">
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div className="pe-image-stage">
+        {failed ? (
+          <div className="pe-empty">
+            {file.name} could not be rendered by this browser.
+          </div>
+        ) : (
+          <img
+            className="pe-image"
+            src={file.url}
+            alt={file.name}
+            onError={() => setFailed(true)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProjectExplorerPanel({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof rpcContract>();
   const [root, setRoot] = useState<Root | null>(null);
@@ -432,6 +535,9 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
   const [branch, setBranch] = useState<string | null>(null);
   const [file, setFile] = useState<OpenFile | null>(null);
   const [fileNotice, setFileNotice] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const layoutRef = useRef<HTMLDivElement | null>(null);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   // Directory listings live for the life of the tab. A Map in a ref keeps
   // them out of React state so a cache write never triggers a render.
@@ -490,6 +596,28 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
       if (root === null) return;
       setFileNotice(null);
       try {
+        if (isImagePath(entry.relativePath)) {
+          const preview = await rpc.call("explorer_preview", {
+            hostId: root.hostId,
+            rootPath: root.rootPath,
+            path: entry.path,
+          });
+          if (preview.outcome === "too_large") {
+            setFile(null);
+            setFileNotice(
+              `${entry.name} is ${formatBytes(preview.sizeBytes)} — too large to preview here.`,
+            );
+            return;
+          }
+          setFile({
+            kind: "image",
+            path: entry.path,
+            relativePath: entry.relativePath,
+            name: entry.name,
+            url: preview.url,
+          });
+          return;
+        }
         const result = await rpc.call("explorer_read", {
           hostId: root.hostId,
           rootPath: root.rootPath,
@@ -510,6 +638,7 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
           return;
         }
         setFile({
+          kind: "text",
           path: entry.path,
           relativePath: entry.relativePath,
           name: entry.name,
@@ -526,7 +655,9 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
   const onSaved = useCallback(
     (sha256: string, content: string) => {
       setFile((current) =>
-        current === null ? null : { ...current, sha256, content },
+        current === null || current.kind !== "text"
+          ? current
+          : { ...current, sha256, content },
       );
       if (root !== null && root.isGitRepo) void refreshGit(root.environmentId);
     },
@@ -539,6 +670,89 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
     if (root !== null && root.isGitRepo) void refreshGit(root.environmentId);
   }, [root, refreshGit]);
 
+  const clampSidebarWidth = useCallback((width: number) => {
+    const layoutWidth = layoutRef.current?.getBoundingClientRect().width;
+    const maximum =
+      layoutWidth === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(
+            MIN_SIDEBAR_WIDTH,
+            layoutWidth - MIN_CONTENT_WIDTH - RESIZER_WIDTH,
+          );
+    return Math.min(Math.max(width, MIN_SIDEBAR_WIDTH), maximum);
+  }, []);
+
+  useEffect(() => {
+    const layout = layoutRef.current;
+    if (layout === null) return;
+    const clampToLayout = () => {
+      setSidebarWidth((current) => clampSidebarWidth(current));
+    };
+    clampToLayout();
+    const observer = new ResizeObserver(clampToLayout);
+    observer.observe(layout);
+    return () => observer.disconnect();
+  }, [clampSidebarWidth]);
+
+  const storeSidebarWidth = useCallback((width: number) => {
+    try {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(Math.round(width)));
+    } catch {
+      // Persistence is a convenience; resizing still works without storage.
+    }
+  }, []);
+
+  const onResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      resizeRef.current = { startX: event.clientX, startWidth: sidebarWidth };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+    [sidebarWidth],
+  );
+
+  const onResizePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const start = resizeRef.current;
+      if (start === null) return;
+      setSidebarWidth(
+        clampSidebarWidth(start.startWidth + event.clientX - start.startX),
+      );
+    },
+    [clampSidebarWidth],
+  );
+
+  const finishResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (resizeRef.current === null) return;
+      resizeRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setSidebarWidth((current) => {
+        const width = clampSidebarWidth(current);
+        storeSidebarWidth(width);
+        return width;
+      });
+    },
+    [clampSidebarWidth, storeSidebarWidth],
+  );
+
+  const onResizeKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      const step = event.shiftKey ? 40 : 10;
+      setSidebarWidth((current) => {
+        const width = clampSidebarWidth(current + direction * step);
+        storeSidebarWidth(width);
+        return width;
+      });
+    },
+    [clampSidebarWidth, storeSidebarWidth],
+  );
+
   if (rootError !== null) {
     return <div className="pe-empty">{rootError}</div>;
   }
@@ -547,8 +761,8 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
   }
 
   return (
-    <div className="pe-layout">
-      <div className="pe-sidebar">
+    <div className="pe-layout" ref={layoutRef}>
+      <div className="pe-sidebar" style={{ width: sidebarWidth }}>
         <div className="pe-sidebar-header">
           <span className="pe-branch" title={root.rootPath}>
             {branch ?? root.rootPath.split("/").pop()}
@@ -586,15 +800,39 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
           />
         </div>
       </div>
+      <div
+        className="pe-resizer"
+        role="separator"
+        aria-label="Resize file explorer"
+        aria-orientation="vertical"
+        aria-valuemin={MIN_SIDEBAR_WIDTH}
+        aria-valuenow={Math.round(sidebarWidth)}
+        tabIndex={0}
+        title="Drag to resize · Double-click to reset"
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={finishResize}
+        onPointerCancel={finishResize}
+        onKeyDown={onResizeKeyDown}
+        onDoubleClick={() => {
+          const width = clampSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+          setSidebarWidth(width);
+          storeSidebarWidth(width);
+        }}
+      />
       <div className="pe-content">
         {file !== null ? (
-          <Editor
-            rpc={rpc}
-            root={root}
-            file={file}
-            onSaved={onSaved}
-            onClose={() => setFile(null)}
-          />
+          file.kind === "image" ? (
+            <ImagePreview file={file} onClose={() => setFile(null)} />
+          ) : (
+            <Editor
+              rpc={rpc}
+              root={root}
+              file={file}
+              onSaved={onSaved}
+              onClose={() => setFile(null)}
+            />
+          )
         ) : (
           <div className="pe-empty">
             {fileNotice ?? "Select a file to view or edit."}

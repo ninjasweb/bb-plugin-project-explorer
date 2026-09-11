@@ -27,6 +27,14 @@ button swaps the viewer for a text editor: `Cmd+S` or `Ctrl+S` saves, `Tab`
 inserts two spaces, and a dot beside the path marks unsaved work. Closing a
 file with unsaved changes asks first.
 
+Common image formats open directly in the panel, including SVG. Image bytes
+stream through BB's temporary workspace-confined preview URLs rather than the
+plugin RPC, and previews are capped at 25 MB.
+
+Drag the divider between the tree and viewer to resize the explorer down to a
+160 px minimum. The panel remembers the chosen width; double-clicking the
+divider restores the default. The divider is also keyboard-accessible.
+
 Saving is compare-and-swap. The plugin sends back the SHA-256 the file had when
 you opened it, so if the agent edited that file while you were typing, the save
 stops and tells you instead of overwriting the agent's work.
@@ -48,4 +56,5 @@ The thread needs an environment with a workspace path. Git colours need that
 workspace to be a git repository; in a plain folder the tree still lists and
 edits files, without colours.
 
-Files over 2 MB and files containing NUL bytes are listed but not opened.
+Text files over 2 MB and unsupported binary files are listed but not opened.
+Image previews are capped at 25 MB.

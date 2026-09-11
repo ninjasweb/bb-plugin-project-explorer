@@ -21,4 +21,8 @@ export const hostContract = defineRpcContract({
       })
       .strict(),
   },
+  statFile: {
+    input: z.object({ path: z.string() }).strict(),
+    output: z.object({ sizeBytes: z.number().nonnegative() }).strict(),
+  },
 });

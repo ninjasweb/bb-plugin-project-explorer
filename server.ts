@@ -1,12 +1,13 @@
 // bb-plugin-project-explorer — backend entry.
 //
-// Five RPC methods back a VS Code-style file tree in the thread right panel:
+// Six RPC methods back a VS Code-style file tree in the thread right panel:
 //
 //   explorer_root   thread -> { hostId, rootPath, environmentId, git info }
 //   explorer_list   ONE directory (never recursive) so a repo with
 //                   node_modules costs the same as an empty one
 //   explorer_git    working-tree status, keyed by workspace-relative path
 //   explorer_read   file content + sha256 (the CAS token for a later save)
+//   explorer_preview temporary root-confined URL for an image file
 //   explorer_write  compare-and-swap save; a stale sha reports "conflict"
 //
 // Every path crossing the wire is confined beneath the environment's
@@ -39,6 +40,19 @@ const rootSchema = z.object({
 
 /** Refuse to open anything that would stall the panel or render as mojibake. */
 const MAX_EDITABLE_BYTES = 2 * 1024 * 1024;
+const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
+const PREVIEWABLE_IMAGE_EXTENSIONS = new Set([
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "png",
+  "svg",
+  "svgz",
+  "webp",
+]);
 
 export const rpcContract = defineRpcContract({
   explorer_root: {
@@ -87,6 +101,17 @@ export const rpcContract = defineRpcContract({
       }),
     ]),
   },
+  explorer_preview: {
+    input: z.object({
+      hostId: z.string(),
+      rootPath: z.string(),
+      path: z.string(),
+    }),
+    output: z.discriminatedUnion("outcome", [
+      z.object({ outcome: z.literal("ok"), url: z.string() }),
+      z.object({ outcome: z.literal("too_large"), sizeBytes: z.number() }),
+    ]),
+  },
   explorer_write: {
     input: z.object({
       hostId: z.string(),
@@ -133,6 +158,19 @@ function toRelative(root: string, absolute: string): string {
   return absolute.startsWith(`${normalizedRoot}/`)
     ? absolute.slice(normalizedRoot.length + 1)
     : absolute;
+}
+
+function previewUrl(baseUrl: string, relativePath: string): string {
+  const encodedPath = relativePath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `${baseUrl.replace(/\/$/u, "")}/${encodedPath}`;
+}
+
+function isPreviewableImage(path: string): boolean {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return extension !== undefined && PREVIEWABLE_IMAGE_EXTENSIONS.has(extension);
 }
 
 /** NUL in the first block is the same heuristic git uses to call a file binary. */
@@ -244,6 +282,34 @@ export default async function plugin(bb: BbPluginApi) {
         content: file.content,
         sha256: file.sha256,
         sizeBytes: file.sizeBytes,
+      };
+    },
+
+    // Preview tokens are created on demand instead of at panel startup. They
+    // stream bytes from the owning host and keep absolute paths off the wire.
+    explorer_preview: async ({ hostId, rootPath, path }) => {
+      if (!isInsideRoot(rootPath, path)) {
+        throw new Error("Path is outside the workspace root.");
+      }
+      if (!isPreviewableImage(path)) {
+        throw new Error("This file type is not a supported image preview.");
+      }
+      const metadata = await host.call("statFile", { path }, { hostId });
+      if (metadata.sizeBytes > MAX_PREVIEW_BYTES) {
+        return {
+          outcome: "too_large" as const,
+          sizeBytes: metadata.sizeBytes,
+        };
+      }
+      const relativePath = toRelative(rootPath, path);
+      const preview = await bb.sdk.files.createPreview({
+        hostId,
+        rootPath,
+        ttlMs: 60 * 60 * 1000,
+      });
+      return {
+        outcome: "ok" as const,
+        url: previewUrl(preview.baseUrl, relativePath),
       };
     },
 

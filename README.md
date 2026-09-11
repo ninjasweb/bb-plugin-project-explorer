@@ -16,6 +16,9 @@ the left, a viewer/editor on the right.
   - purple — unmerged / conflict (`U`)
   - A collapsed folder inherits amber when anything beneath it changed.
 - **View** with bb's own syntax highlighting and code theme.
+- **Preview images** including PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG.
+- **Resize the file tree** by dragging its divider down to a 160 px minimum.
+  The width is remembered; double-click the divider to reset it.
 - **Edit** in place. `Cmd/Ctrl+S` saves, `Tab` inserts two spaces, `Esc`-free
   cancel restores the file.
 
@@ -35,6 +38,8 @@ opening a small one:
 - Viewing reuses bb's `experimental_SourceCode`, and editing is a plain
   `textarea`. The plugin ships no editor engine and no highlighter, so the
   frontend bundle stays small.
+- Images stream through bb's temporary, workspace-confined preview URLs instead
+  of crossing the plugin RPC as base64.
 
 ## Safety
 
@@ -43,8 +48,9 @@ opening a small one:
 - Saves are compare-and-swap: the read's `sha256` is sent back as
   `expectedSha256`. If an agent (or anything else) changed the file
   meanwhile, the save reports a conflict instead of clobbering that work.
-- Files over 2 MB and files containing NUL bytes are refused rather than
-  loaded into the panel.
+- Text files over 2 MB and binary files that are not supported images are
+  refused rather than loaded into the editor. Image previews are capped at
+  25 MB.
 
 ## Settings
 

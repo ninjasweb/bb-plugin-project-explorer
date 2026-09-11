@@ -1,8 +1,7 @@
 // Host entry — runs on the daemon that owns the workspace files.
 //
-// One job: list a single directory, dotfiles included. `fs.readdir` with
-// `withFileTypes` is a single syscall-backed read of that directory, so the
-// cost is the folder you clicked, never the tree beneath it.
+// Two small host-local jobs: list a single directory with dotfiles included,
+// and stat an image before previewing it. Neither operation reads file bytes.
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
@@ -34,5 +33,6 @@ export default experimental_defineHostEntry({
       );
       return { entries };
     },
+    statFile: async ({ path }) => ({ sizeBytes: (await stat(path)).size }),
   },
 });

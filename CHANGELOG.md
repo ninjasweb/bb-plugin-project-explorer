@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- Add a proper draggable divider for the file tree, with a 160 px minimum,
+  keyboard resizing, persisted width, and double-click reset.
+- Preview common raster image formats directly in the panel.
+- Render SVG and SVGZ files as images instead of treating them as binary.
+- Stream images through bb's temporary root-confined preview route and cap
+  previews at 25 MB.
+
 ## 0.1.0
 
 First release.
