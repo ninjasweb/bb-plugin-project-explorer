@@ -51,11 +51,12 @@ opening a small one:
 **Show dotfiles** (default on) — include entries beginning with `.` in the
 tree.
 
+See [CHANGELOG.md](./CHANGELOG.md) for release notes.
+
 ## Development
 
 ```
-npm install --include=dev --ignore-scripts   # better-sqlite3 is an unused
-                                             # scaffold dep that needs no build
+npm install --include=dev
 bb plugin build
 bb plugin install .
 bb plugin dev                                # rebuild + reload on save
