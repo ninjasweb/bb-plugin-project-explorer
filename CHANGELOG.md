@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- Remount the syntax-highlighting viewer for each file revision so an async
+  result from the previous file cannot be applied to new contents.
+- Contain source-renderer failures and fall back to a scrollable plain-text
+  preview instead of crashing the whole Project Explorer panel.
+
 ## 0.1.1
 
 - Add a proper draggable divider for the file tree, with a 160 px minimum,

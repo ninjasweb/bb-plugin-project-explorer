@@ -16,6 +16,8 @@ the left, a viewer/editor on the right.
   - purple — unmerged / conflict (`U`)
   - A collapsed folder inherits amber when anything beneath it changed.
 - **View** with bb's own syntax highlighting and code theme.
+  If the host highlighter cannot render a file, the panel keeps working and
+  shows a plain-text preview instead.
 - **Preview images** including PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG.
 - **Resize the file tree** by dragging its divider down to a 160 px minimum.
   The width is remembered; double-click the divider to reset it.

@@ -13,7 +13,16 @@
 //   - Viewing uses bb's own SourceCode component (host-owned highlighting,
 //     zero bundle cost). Editing swaps in a plain textarea, so the plugin
 //     ships no editor engine.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import {
   definePluginApp,
   useRpc,
@@ -302,6 +311,52 @@ function indent(depth: number): React.CSSProperties {
   return { paddingLeft: `${depth * 12 + 8}px` };
 }
 
+interface SourcePreviewBoundaryProps {
+  content: string;
+  path: string;
+}
+
+interface SourcePreviewBoundaryState {
+  failed: boolean;
+}
+
+/**
+ * Pierre/Shiki can occasionally finish an old async highlight after the user
+ * has selected another file, leaving its rendered lines out of sync with the
+ * new contents. Keep that third-party failure inside the preview: the editor
+ * and file actions remain available, with a plain-text fallback.
+ */
+class SourcePreviewBoundary extends Component<
+  SourcePreviewBoundaryProps,
+  SourcePreviewBoundaryState
+> {
+  state: SourcePreviewBoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): SourcePreviewBoundaryState {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.warn("Project Explorer source highlighting failed", error, info);
+  }
+
+  render(): ReactNode {
+    if (this.state.failed) {
+      return (
+        <div className="pe-source-fallback">
+          <div className="pe-source-fallback-notice">
+            Syntax highlighting failed. Showing plain text.
+          </div>
+          <pre className="pe-source-fallback-code">
+            <code>{this.props.content}</code>
+          </pre>
+        </div>
+      );
+    }
+    return <SourceCode content={this.props.content} path={this.props.path} />;
+  }
+}
+
 /** Viewer + editor for one file. */
 function Editor({
   rpc,
@@ -460,7 +515,11 @@ function Editor({
             onKeyDown={onKeyDown}
           />
         ) : (
-          <SourceCode content={file.content} path={file.path} />
+          <SourcePreviewBoundary
+            key={`${file.path}:${file.sha256}`}
+            content={file.content}
+            path={file.path}
+          />
         )}
       </div>
     </div>

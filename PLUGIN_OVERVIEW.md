@@ -25,7 +25,9 @@ the tab, and a collapsed folder unmounts its contents entirely.
 Files open with BB's own syntax highlighting and code theme. The **Edit**
 button swaps the viewer for a text editor: `Cmd+S` or `Ctrl+S` saves, `Tab`
 inserts two spaces, and a dot beside the path marks unsaved work. Closing a
-file with unsaved changes asks first.
+file with unsaved changes asks first. If BB's syntax renderer fails on a file,
+Project Explorer contains that failure and shows the same contents as plain
+text instead of replacing the entire panel with an error.
 
 Common image formats open directly in the panel, including SVG. Image bytes
 stream through BB's temporary workspace-confined preview URLs rather than the

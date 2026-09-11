@@ -221,6 +221,33 @@
   overflow: auto;
 }
 
+.pe-source-fallback {
+  min-width: max-content;
+  min-height: 100%;
+  background: var(--background);
+}
+
+.pe-source-fallback-notice {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.pe-source-fallback-code {
+  margin: 0;
+  padding: 12px;
+  color: var(--foreground);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
 .pe-image-stage {
   display: flex;
   align-items: center;
