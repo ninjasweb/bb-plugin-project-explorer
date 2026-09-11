@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- Fix `FileRenderer.processFileResult: Line doesnt exist` for text files that
+  end with a newline by normalizing only the syntax-preview copy. Editing and
+  saving still use the file's exact original contents.
+
 ## 0.1.2
 
 - Remount the syntax-highlighting viewer for each file revision so an async

@@ -321,10 +321,20 @@ interface SourcePreviewBoundaryState {
 }
 
 /**
- * Pierre/Shiki can occasionally finish an old async highlight after the user
- * has selected another file, leaving its rendered lines out of sync with the
- * new contents. Keep that third-party failure inside the preview: the editor
- * and file actions remain available, with a plain-text fallback.
+ * bb's source renderer currently builds its line cache from the original text,
+ * but removes one terminal line break before highlighting it. That leaves the
+ * two internal line arrays out of sync for ordinary POSIX text files. Remove
+ * terminal line breaks from the preview copy so both sides receive the same
+ * number of lines. The editor and save path continue to use the exact original
+ * content.
+ */
+function normalizeSourcePreviewContent(content: string): string {
+  return content.replace(/(?:\r\n|\n|\r)+$/u, "");
+}
+
+/**
+ * Keep any source-renderer exception that reaches React inside the preview:
+ * the editor and file actions remain available, with a plain-text fallback.
  */
 class SourcePreviewBoundary extends Component<
   SourcePreviewBoundaryProps,
@@ -353,7 +363,12 @@ class SourcePreviewBoundary extends Component<
         </div>
       );
     }
-    return <SourceCode content={this.props.content} path={this.props.path} />;
+    return (
+      <SourceCode
+        content={normalizeSourcePreviewContent(this.props.content)}
+        path={this.props.path}
+      />
+    );
   }
 }
 

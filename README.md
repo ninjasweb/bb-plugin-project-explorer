@@ -16,6 +16,8 @@ the left, a viewer/editor on the right.
   - purple — unmerged / conflict (`U`)
   - A collapsed folder inherits amber when anything beneath it changed.
 - **View** with bb's own syntax highlighting and code theme.
+  Files ending in a newline are normalized only for the preview to avoid a
+  host renderer line-count mismatch; their editable contents stay unchanged.
   If the host highlighter cannot render a file, the panel keeps working and
   shows a plain-text preview instead.
 - **Preview images** including PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG.
