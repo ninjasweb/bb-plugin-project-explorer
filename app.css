@@ -207,6 +207,36 @@
   flex: 1;
 }
 
+.pe-view-switch {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--muted);
+}
+
+.pe-view-option {
+  height: 18px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.pe-view-option:hover {
+  color: var(--foreground);
+}
+
+.pe-view-option-active {
+  background: var(--background);
+  color: var(--foreground);
+}
+
 .pe-dirty-dot {
   flex: none;
   width: 7px;
@@ -246,6 +276,22 @@
   font-size: 12.5px;
   line-height: 1.55;
   tab-size: 2;
+}
+
+.pe-diff-view {
+  min-width: max-content;
+  min-height: 100%;
+}
+
+.pe-diff-notice {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 11px;
 }
 
 .pe-image-stage {

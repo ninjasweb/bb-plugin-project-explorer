@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- Open Git-modified text files on a line-numbered unified diff that shows
+  additions and deletions.
+- Add a `Changes` / `Code` switch so the full syntax-highlighted file remains
+  one click away.
+
 ## 0.1.3
 
 - Fix `FileRenderer.processFileResult: Line doesnt exist` for text files that

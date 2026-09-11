@@ -20,6 +20,9 @@ the left, a viewer/editor on the right.
   host renderer line-count mismatch; their editable contents stay unchanged.
   If the host highlighter cannot render a file, the panel keeps working and
   shows a plain-text preview instead.
+- **Inspect changed lines.** Git-modified text files open on a unified diff
+  with old/new line numbers and added/deleted lines. Switch between
+  **Changes** and the complete **Code** view from the file header.
 - **Preview images** including PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG.
 - **Resize the file tree** by dragging its divider down to a 160 px minimum.
   The width is remembered; double-click the divider to reset it.

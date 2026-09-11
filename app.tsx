@@ -26,6 +26,7 @@ import {
 import {
   definePluginApp,
   useRpc,
+  experimental_Diff as Diff,
   experimental_SourceCode as SourceCode,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -60,6 +61,11 @@ interface OpenImageFile {
 }
 
 type OpenFile = OpenTextFile | OpenImageFile;
+
+type GitDiffState =
+  | { status: "idle" | "loading" }
+  | { status: "available"; patch: string; truncated: boolean }
+  | { status: "unavailable"; message: string };
 
 const IMAGE_EXTENSIONS = new Set([
   "avif",
@@ -377,18 +383,24 @@ function Editor({
   rpc,
   root,
   file,
+  gitStatus,
   onSaved,
   onClose,
 }: {
   rpc: Rpc;
   root: Root;
   file: OpenTextFile;
+  gitStatus: GitStatus | undefined;
   onSaved: (sha256: string, content: string) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(file.content);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [view, setView] = useState<"code" | "changes">(
+    gitStatus === undefined ? "code" : "changes",
+  );
+  const [gitDiff, setGitDiff] = useState<GitDiffState>({ status: "idle" });
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // A different file (or an external change we picked up) resets the draft.
@@ -396,6 +408,58 @@ function Editor({
     setDraft(file.content);
     setIsEditing(false);
   }, [file.path, file.content]);
+
+  // Dirty files open on their Git patch so the changed line numbers are
+  // immediately visible. Clean files never pay for this extra request.
+  useEffect(() => {
+    if (gitStatus === undefined) {
+      setGitDiff({ status: "idle" });
+      setView("code");
+      return;
+    }
+    let cancelled = false;
+    setGitDiff({ status: "loading" });
+    setView("changes");
+    void rpc
+      .call("explorer_diff", {
+        environmentId: root.environmentId,
+        path: file.relativePath,
+      })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.outcome === "available") {
+          setGitDiff({
+            status: "available",
+            patch: result.patch,
+            truncated: result.truncated,
+          });
+          return;
+        }
+        if (result.outcome === "clean") {
+          setGitDiff({ status: "idle" });
+          setView("code");
+          return;
+        }
+        setGitDiff({ status: "unavailable", message: result.message });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setGitDiff({
+          status: "unavailable",
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    rpc,
+    root.environmentId,
+    file.path,
+    file.relativePath,
+    file.sha256,
+    gitStatus,
+  ]);
 
   const isDirty = draft !== file.content;
 
@@ -467,6 +531,30 @@ function Editor({
         </span>
         {isDirty ? <span className="pe-dirty-dot" title="Unsaved" /> : null}
         <span className="pe-editor-spacer" />
+        {!isEditing && gitStatus !== undefined ? (
+          <div className="pe-view-switch" aria-label="File view">
+            <button
+              type="button"
+              className={`pe-view-option${
+                view === "changes" ? " pe-view-option-active" : ""
+              }`}
+              onClick={() => setView("changes")}
+              aria-pressed={view === "changes"}
+            >
+              Changes
+            </button>
+            <button
+              type="button"
+              className={`pe-view-option${
+                view === "code" ? " pe-view-option-active" : ""
+              }`}
+              onClick={() => setView("code")}
+              aria-pressed={view === "code"}
+            >
+              Code
+            </button>
+          </div>
+        ) : null}
         {isEditing ? (
           <>
             <button
@@ -529,6 +617,28 @@ function Editor({
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
           />
+        ) : view === "changes" ? (
+          gitDiff.status === "available" ? (
+            <div className="pe-diff-view">
+              {gitDiff.truncated ? (
+                <div className="pe-diff-notice">
+                  Large diff truncated by bb.
+                </div>
+              ) : null}
+              <Diff
+                key={`${file.path}:${file.sha256}:diff`}
+                patch={gitDiff.patch}
+                path={file.relativePath}
+                view="unified"
+                overflow="scroll"
+                showLineNumbers
+              />
+            </div>
+          ) : gitDiff.status === "unavailable" ? (
+            <div className="pe-empty">{gitDiff.message}</div>
+          ) : (
+            <div className="pe-empty">Loading Git changes…</div>
+          )
         ) : (
           <SourcePreviewBoundary
             key={`${file.path}:${file.sha256}`}
@@ -903,6 +1013,7 @@ function ProjectExplorerPanel({ threadId }: { threadId: string }) {
               rpc={rpc}
               root={root}
               file={file}
+              gitStatus={status.exact.get(file.relativePath)}
               onSaved={onSaved}
               onClose={() => setFile(null)}
             />

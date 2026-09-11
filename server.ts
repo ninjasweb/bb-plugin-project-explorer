@@ -1,12 +1,13 @@
 // bb-plugin-project-explorer — backend entry.
 //
-// Six RPC methods back a VS Code-style file tree in the thread right panel:
+// Seven RPC methods back a VS Code-style file tree in the thread right panel:
 //
 //   explorer_root   thread -> { hostId, rootPath, environmentId, git info }
 //   explorer_list   ONE directory (never recursive) so a repo with
 //                   node_modules costs the same as an empty one
 //   explorer_git    working-tree status, keyed by workspace-relative path
 //   explorer_read   file content + sha256 (the CAS token for a later save)
+//   explorer_diff   unified Git patch for one modified text file
 //   explorer_preview temporary root-confined URL for an image file
 //   explorer_write  compare-and-swap save; a stale sha reports "conflict"
 //
@@ -98,6 +99,25 @@ export const rpcContract = defineRpcContract({
       z.object({
         outcome: z.literal("binary"),
         sizeBytes: z.number(),
+      }),
+    ]),
+  },
+  explorer_diff: {
+    input: z.object({
+      environmentId: z.string(),
+      /** Workspace-relative path, matching explorer_git's file keys. */
+      path: z.string(),
+    }),
+    output: z.discriminatedUnion("outcome", [
+      z.object({
+        outcome: z.literal("available"),
+        patch: z.string(),
+        truncated: z.boolean(),
+      }),
+      z.object({ outcome: z.literal("clean") }),
+      z.object({
+        outcome: z.literal("unavailable"),
+        message: z.string(),
       }),
     ]),
   },
@@ -282,6 +302,34 @@ export default async function plugin(bb: BbPluginApi) {
         content: file.content,
         sha256: file.sha256,
         sizeBytes: file.sizeBytes,
+      };
+    },
+
+    // Ask bb for one bounded patch instead of invoking Git ourselves. This
+    // follows the environment's own routing and works for remote workspaces.
+    explorer_diff: async ({ environmentId, path }) => {
+      const result = await bb.sdk.environments.diffPatch({
+        environmentId,
+        paths: [path],
+        target: { type: "uncommitted" },
+      });
+      if (result.outcome !== "available") {
+        const message =
+          result.outcome === "not_applicable"
+            ? result.message
+            : result.failure.message;
+        return { outcome: "unavailable" as const, message };
+      }
+      const filePatch =
+        result.patches.find((candidate) => candidate.path === path) ??
+        (result.patches.length === 1 ? result.patches[0] : undefined);
+      if (filePatch === undefined || filePatch.patch.trim() === "") {
+        return { outcome: "clean" as const };
+      }
+      return {
+        outcome: "available" as const,
+        patch: filePatch.patch,
+        truncated: filePatch.truncated,
       };
     },
 
